@@ -1,10 +1,10 @@
-import express from "express";
+const express = require('express');
 
 // This will help us connect to the database
-import db from "../db/connection.js";
+const connection = require('../db/connection');
 
-// This help convert the id from string to ObjectId for the _id.
-import { ObjectId } from "mongodb";
+// This helps convert the id from string to ObjectId for the _id.
+const { ObjectId } = require('mongodb');
 
 // router is an instance of the express router.
 // We use it to define our routes.
@@ -13,13 +13,51 @@ const router = express.Router();
 
 // This section will help you get a list of all the records.
 router.get("/", async (req, res) => {
+  let db = await connection.getDB();
   let collection = await db.collection("records");
   let results = await collection.find({}).toArray();
   res.send(results).status(200);
 });
 
+// search by all fields using $search
+router.get("/search", async (req, res) => {
+  let db = await connection.getDB();
+  let collection = await db.collection("records");
+  const query = req.query.q;
+  if (!query) {
+    return res.status(400).send({ error: '"query" parameter is required' });
+  }
+  const results = await collection.aggregate([
+    {
+      '$search': {
+        'index': 'default2',
+        'compound': {
+          'should': [
+            {
+              'autocomplete': {
+                'query': query,
+                'path': 'name'
+              }
+            },
+            {
+              'autocomplete': {
+                'query': query,
+                'path': 'position'
+              }
+            }
+          ],
+          'minimumShouldMatch': 1
+        }
+      }
+    }
+  ]).toArray();
+
+  res.send(results).status(200);
+});
+
 // This section will help you get a single record by id
 router.get("/:id", async (req, res) => {
+  let db = await connection.getDB();
   let collection = await db.collection("records");
   let query = { _id: new ObjectId(req.params.id) };
   let result = await collection.findOne(query);
@@ -36,6 +74,7 @@ router.post("/", async (req, res) => {
       position: req.body.position,
       level: req.body.level,
     };
+    let db = await connection.getDB();
     let collection = await db.collection("records");
     let result = await collection.insertOne(newDocument);
     res.send(result).status(204);
@@ -56,7 +95,7 @@ router.patch("/:id", async (req, res) => {
         level: req.body.level,
       },
     };
-
+    let db = await connection.getDB();
     let collection = await db.collection("records");
     let result = await collection.updateOne(query, updates);
     res.send(result).status(200);
@@ -70,7 +109,7 @@ router.patch("/:id", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   try {
     const query = { _id: new ObjectId(req.params.id) };
-
+    let db = await connection.getDB();
     const collection = db.collection("records");
     let result = await collection.deleteOne(query);
 
@@ -81,4 +120,4 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
-export default router;
+module.exports = router;
